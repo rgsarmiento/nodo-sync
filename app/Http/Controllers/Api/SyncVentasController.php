@@ -119,6 +119,18 @@ class SyncVentasController extends Controller
                     }
                 }
 
+                if ($venta['Tipo'] === 'FV') {
+                    // ajustar inventario solo para FACTURA o CREDITO FISCAL
+                    foreach ($venta['Productos'] as $prod) {
+                        $this->restarCantidadActual($prod['Codigo'], $prod['Cantidad']);
+                    }
+                }else if ($venta['Tipo'] === 'NC') {
+                    // para NOTA CREDITO, aumentar inventario
+                    foreach ($venta['Productos'] as $prod) {
+                        $this->sumarCantidadActual($prod['Codigo'], $prod['Cantidad']);
+                    }
+                }
+
                 DB::commit();
                 $procesadas[] = $llave;
 
@@ -158,15 +170,15 @@ class SyncVentasController extends Controller
             ->orderBy('dcp.Id', 'desc')
             ->select('dcp.CostoBase');
 
-        if ($codigoAlmacen) {
-            // si deseas filtrar por almacen (ajusta nombre de columna si es diferente)
-            if (Schema::hasColumn('DocumentosCompras', 'CodigoAlmacen')) {
-                $query->where('dc.CodigoAlmacen', $codigoAlmacen);
-            } else {
-                // opcional: si DocumentosComprasProductos tiene CodigoAlmacen:
-                $query->where('dcp.CodigoAlmacen', $codigoAlmacen);
-            }
-        }
+        // if ($codigoAlmacen) {
+        //     // si deseas filtrar por almacen (ajusta nombre de columna si es diferente)
+        //     if (Schema::hasColumn('DocumentosCompras', 'CodigoAlmacen')) {
+        //         $query->where('dc.CodigoAlmacen', $codigoAlmacen);
+        //     } else {
+        //         // opcional: si DocumentosComprasProductos tiene CodigoAlmacen:
+        //         $query->where('dcp.CodigoAlmacen', $codigoAlmacen);
+        //     }
+        // }
 
         $row = $query->first();
         if ($row && $row->CostoBase !== null) {
@@ -174,24 +186,44 @@ class SyncVentasController extends Controller
         }
 
         // Intento 2: DocumentosComprasProductos por Creado
-        $row2 = DB::table('DocumentosComprasProductos')
-            ->where('Codigo', $codigoProducto)
-            ->where('Creado', '<=', $fecha . ' 23:59:59')
-            ->orderBy('Creado', 'desc')
-            ->orderBy('Id', 'desc')
-            ->select('CostoBase')
-            ->first();
+        // $row2 = DB::table('DocumentosComprasProductos')
+        //     ->where('Codigo', $codigoProducto)
+        //     ->where('Creado', '<=', $fecha . ' 23:59:59')
+        //     ->orderBy('Creado', 'desc')
+        //     ->orderBy('Id', 'desc')
+        //     ->select('CostoBase')
+        //     ->first();
 
-        if ($row2 && $row2->CostoBase !== null) {
-            return (float)$row2->CostoBase;
-        }
+        // if ($row2 && $row2->CostoBase !== null) {
+        //     return (float)$row2->CostoBase;
+        // }
 
         // Intento 3: Productos.PrecioCompra
         //$prod = DB::table('Productos')->where('CodigoProducto', $codigoProducto)->select('PrecioCompra')->first();
         //if ($prod && $prod->PrecioCompra !== null) {
         //    return (float)$prod->PrecioCompra;
         //}
-
+        $query_almacen = DB::table('InventarioAlmacen')
+            ->where('CodigoProducto', $codigoProducto)->select('PrecioCompra')->first();
+        if ($query_almacen && $query_almacen->PrecioCompra !== null) {
+            return (float)$query_almacen->PrecioCompra;
+        }
         return 0.0;
     }
+
+
+    function sumarCantidadActual($codigoProducto, $cantidad)
+    {
+        return DB::table('InventarioAlmacen')
+            ->where('CodigoProducto', $codigoProducto)
+            ->increment('CantidadActual', $cantidad);
+    }
+
+    function restarCantidadActual($codigoProducto, $cantidad)
+    {
+        return DB::table('InventarioAlmacen')
+            ->where('CodigoProducto', $codigoProducto)
+            ->decrement('CantidadActual', $cantidad);
+    }
+
 }
