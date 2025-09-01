@@ -13,6 +13,7 @@ class SyncVentasController extends Controller
 {
     public function store(SyncVentasRequest $request)
     {
+        dd($request->all());
         $ventas = $request->input('ventas', []);
         $procesadas = [];
 
