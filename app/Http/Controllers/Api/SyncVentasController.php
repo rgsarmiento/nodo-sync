@@ -144,7 +144,7 @@ class SyncVentasController extends Controller
      * - 2) Si no encuentra, busca DocumentosComprasProductos por Creado <= fechaVenta
      * - 3) Si no encuentra, devuelve Productos.PrecioCompra
      */
-    private function costoBaseParaProducto(int $codigoProducto, string $fechaVenta, ?string $codigoAlmacen = null): float
+    private function costoBaseParaProducto(string $codigoProducto, string $fechaVenta, ?string $codigoAlmacen = null): float
     {
         $fecha = Carbon::parse($fechaVenta)->toDateString();
 
