@@ -69,10 +69,7 @@ class SyncVentasController extends Controller
                     ];
 
                     // calcular costo
-                    $costo = $this->costoBaseParaProducto(
-                        (int)$prod['Codigo'],
-                        $fechaVenta
-                    );
+                    $costo = $this->costoBaseParaProducto($prod['Codigo'], $fechaVenta );
 
                     // preparar datos para inserción / actualización
                     $prodData = $prod;
