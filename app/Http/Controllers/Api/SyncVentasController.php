@@ -178,9 +178,9 @@ class SyncVentasController extends Controller
         }
 
         $query_almacen = DB::table('InventarioAlmacen')
-            ->where('CodigoProducto', $codigoProducto)->select('PrecioCompra')->first();
-        if ($query_almacen && $query_almacen->PrecioCompra !== null) {
-            return (float)$query_almacen->PrecioCompra;
+            ->where('CodigoProducto', $codigoProducto)->select('CostoUnitarioPromedio')->first();
+        if ($query_almacen && $query_almacen->CostoUnitarioPromedio !== null) {
+            return (float)$query_almacen->CostoUnitarioPromedio;
         }
         return 0.0;
     }
