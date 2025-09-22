@@ -139,9 +139,12 @@ class SyncVentasController extends Controller
                 DB::rollBack();
                 // devuelve error detallado para diagnóstico (puedes sanitizar en producción)
                 return response()->json([
-                    'status' => 'error',
-                    'message' => $e->getMessage(),
-                    'llave' => $venta['llave'] ?? null
+                     'status' => 'error',
+                     'message' => $e->getMessage(),
+                     'file'    => $e->getFile(),
+                     'line'    => $e->getLine(),
+                     'llave'   => $venta['llave'] ?? null,
+                     'trace' => $e->getTraceAsString(), // descomenta si quieres TODO el stack
                 ], 500);
             }
         }
