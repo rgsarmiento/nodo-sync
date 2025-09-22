@@ -236,11 +236,11 @@ class SyncVentasController extends Controller
             // 5. Insertar en KardexMovimientos
             DB::table('KardexMovimientos')->insert([
                 'Id_lst_InventarioTransacciones' => 5, // salida por venta
-                'Documento' => $venta['Documento'] ?? null,
+                'Documento' => $venta['Prefijo'] . '-' . $venta['Consecutivo'] ?? null,
                 'FechaDocumento' => $fechaDocumento,
                 'CodigoProducto' => $producto['Codigo'],
                 'NombreProducto' => $producto['Nombre'] ?? '',
-                'Concepto' => '- Salida por venta ' . $venta['Documento'] ?? '',
+                'Concepto' => '- Salida por venta ' . $venta['Prefijo'] . '-' . $venta['Consecutivo'] ?? '',
                 'Cantidad' => $producto['Cantidad'], // negativo para salidas
                 'CantidadTotal' => $nuevoStock,
                 'CostoUnitarioCompra' => 0,
@@ -383,11 +383,11 @@ class SyncVentasController extends Controller
             // 5. Insertar en KardexMovimientos
             DB::table('KardexMovimientos')->insert([
                 'Id_lst_InventarioTransacciones' => 2, // entrada por devolución de venta
-                'Documento' => $notaCredito['Documento'] ?? null,
+                'Documento' => $notaCredito['Prefijo'] . '-' . $notaCredito['Consecutivo'] ?? null,
                 'FechaDocumento' => $fechaDocumento,
                 'CodigoProducto' => $producto['CodigoProducto'],
                 'NombreProducto' => $producto['NombreProducto'] ?? '',
-                'Concepto' => '+ Devolución por nota crédito ' . ($notaCredito['Documento'] ?? ''),
+                'Concepto' => '+ Devolución por nota crédito ' . $notaCredito['Prefijo'] . '-' . $notaCredito['Consecutivo'] ?? '',
                 'Cantidad' => $cantidadDevuelta, // positivo porque entra
                 'CantidadTotal' => $nuevoStock,
                 'CostoUnitarioCompra' => $costoBase, // lo que costó originalmente
