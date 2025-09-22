@@ -84,7 +84,7 @@ class SyncVentasController extends Controller
                     $prodData['Observacion'] = $prodData['Observacion'] ?? '';
                     $prodData['NombreOtrosImpuestos'] = $prodData['NombreOtrosImpuestos'] ?? '';
 
-                    dd($prodData);
+                    //($prodData);
                     DB::table('DocumentosVentasProductos')->updateOrInsert(
                         $where,
                         $prodData
