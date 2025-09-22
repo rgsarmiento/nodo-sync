@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Support\Str;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SyncVentasRequest;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +15,7 @@ class SyncVentasController extends Controller
 {
     public function store(SyncVentasRequest $request)
     {
-        
+
         $ventas = $request->input('ventas', []);
         $procesadas = [];
 
@@ -36,7 +38,7 @@ class SyncVentasController extends Controller
 
                 // preparar datos de encabezado (excluir colecciones)
                 $encabezado = collect($venta)
-                    ->except(['Productos','Impuestos','Pagos'])
+                    ->except(['Productos', 'Impuestos', 'Pagos'])
                     ->toArray();
 
                 // asegurar campos obligatorios
@@ -51,7 +53,7 @@ class SyncVentasController extends Controller
                     $encabezado['FechaVencimiento'] = Carbon::parse($encabezado['FechaVencimiento'])->toDateString();
                 }
 
-                 // Insertar encabezado
+                // Insertar encabezado
                 DB::table('DocumentosVentas')->insert($encabezado);
 
                 // Fecha de venta para cálculo de costo
@@ -69,19 +71,20 @@ class SyncVentasController extends Controller
                     ];
 
                     // calcular costo
-                    $costo = $this->costoBaseParaProducto($prod['Codigo'], $fechaVenta );
+                    $costo = $this->costoBaseParaProducto($prod['Codigo'], $fechaVenta);
 
                     // preparar datos para inserción / actualización
                     $prodData = $prod;
                     $prodData['CostoBase'] = $costo;
                     $prodData['LlaveDocumentosVentas'] = $llave;
-                    $prodData['NombreImpuestoSaludable'] = $prodData['NombreImpuestoSaludable'] ?? '';// evitar null
+                    $prodData['NombreImpuestoSaludable'] = $prodData['NombreImpuestoSaludable'] ?? ''; // evitar null
                     $prodData['PrefijoImpuestoSaludable'] = $prodData['PrefijoImpuestoSaludable'] ?? '';
                     $prodData['DescripcionDescuentoGeneral'] = $prodData['DescripcionDescuentoGeneral'] ?? '';
                     $prodData['DescripcionDescuentoProgramado'] = $prodData['DescripcionDescuentoProgramado'] ?? '';
                     $prodData['Observacion'] = $prodData['Observacion'] ?? '';
                     $prodData['NombreOtrosImpuestos'] = $prodData['NombreOtrosImpuestos'] ?? '';
 
+                    dd($prodData);
                     DB::table('DocumentosVentasProductos')->updateOrInsert(
                         $where,
                         $prodData
@@ -119,18 +122,19 @@ class SyncVentasController extends Controller
                 if ($venta['Tipo'] === 'FV') {
                     // ajustar inventario solo para FACTURA o CREDITO FISCAL
                     foreach ($venta['Productos'] as $prod) {
-                        $this->restarCantidadActual($prod['Codigo'], $prod['Cantidad']);
+                        //$this->restarCantidadActual($prod['Codigo'], $prod['Cantidad']);
+                        $this->registrarSalida($venta, $prod);
                     }
-                }else if ($venta['Tipo'] === 'NC') {
+                } else if ($venta['Tipo'] === 'NC') {
                     // para NOTA CREDITO, aumentar inventario
-                    foreach ($venta['Productos'] as $prod) {
-                        $this->sumarCantidadActual($prod['Codigo'], $prod['Cantidad']);
-                    }
+                    // foreach ($venta['Productos'] as $prod) {
+                    //     $this->sumarCantidadActual($prod['Codigo'], $prod['Cantidad']);
+                    // }
+                    $this->procesarNotaCredito($venta);
                 }
 
                 DB::commit();
                 $procesadas[] = $llave;
-
             } catch (\Throwable $e) {
                 DB::rollBack();
                 // devuelve error detallado para diagnóstico (puedes sanitizar en producción)
@@ -167,39 +171,12 @@ class SyncVentasController extends Controller
             ->orderBy('dcp.Id', 'desc')
             ->select('dcp.CostoBase');
 
-        // if ($codigoAlmacen) {
-        //     // si deseas filtrar por almacen (ajusta nombre de columna si es diferente)
-        //     if (Schema::hasColumn('DocumentosCompras', 'CodigoAlmacen')) {
-        //         $query->where('dc.CodigoAlmacen', $codigoAlmacen);
-        //     } else {
-        //         // opcional: si DocumentosComprasProductos tiene CodigoAlmacen:
-        //         $query->where('dcp.CodigoAlmacen', $codigoAlmacen);
-        //     }
-        // }
 
         $row = $query->first();
         if ($row && $row->CostoBase !== null) {
             return (float)$row->CostoBase;
         }
 
-        // Intento 2: DocumentosComprasProductos por Creado
-        // $row2 = DB::table('DocumentosComprasProductos')
-        //     ->where('Codigo', $codigoProducto)
-        //     ->where('Creado', '<=', $fecha . ' 23:59:59')
-        //     ->orderBy('Creado', 'desc')
-        //     ->orderBy('Id', 'desc')
-        //     ->select('CostoBase')
-        //     ->first();
-
-        // if ($row2 && $row2->CostoBase !== null) {
-        //     return (float)$row2->CostoBase;
-        // }
-
-        // Intento 3: Productos.PrecioCompra
-        //$prod = DB::table('Productos')->where('CodigoProducto', $codigoProducto)->select('PrecioCompra')->first();
-        //if ($prod && $prod->PrecioCompra !== null) {
-        //    return (float)$prod->PrecioCompra;
-        //}
         $query_almacen = DB::table('InventarioAlmacen')
             ->where('CodigoProducto', $codigoProducto)->select('PrecioCompra')->first();
         if ($query_almacen && $query_almacen->PrecioCompra !== null) {
@@ -223,4 +200,202 @@ class SyncVentasController extends Controller
             ->decrement('CantidadActual', $cantidad);
     }
 
+    function registrarSalida(array $venta, array $producto)
+    {
+        DB::transaction(function () use ($venta, $producto) {
+
+            $llaveVenta = $venta['Llave'] ?? null;
+            $fechaDocumento = $venta['FechaDocumento'] ?? now()->toDateString();
+            $codigoAlmacen = $venta['CodigoAlmacen'] ?? null;
+
+            // 1. Leer stock actual con UPDLOCK
+            $row = DB::table('InventarioAlmacen')
+                ->where('CodigoProducto', $producto['Codigo'])
+                ->lockForUpdate()
+                ->first();
+
+            $stockAnterior = $row?->CantidadActual ?? 0;
+            $costoPromedio = $row?->CostoUnitarioPromedio ?? 0;
+
+            // 2. Validar stock
+            //if ($stockAnterior < $producto['Cantidad']) {
+            //  throw new \Exception("Stock insuficiente para el producto {$producto['Codigo']}");
+            //}
+
+            // 3. Calcular nuevo stock
+            $nuevoStock = $stockAnterior - $producto['Cantidad'];
+
+            // 4. Actualizar Inventario
+            DB::table('InventarioAlmacen')
+                ->where('CodigoProducto', $producto['Codigo'])
+                ->update(['CantidadActual' => $nuevoStock]);
+
+            // 5. Insertar en KardexMovimientos
+            DB::table('KardexMovimientos')->insert([
+                'Id_lst_InventarioTransacciones' => 5, // salida por venta
+                'Documento' => $venta['Documento'] ?? null,
+                'FechaDocumento' => $fechaDocumento,
+                'CodigoProducto' => $producto['Codigo'],
+                'NombreProducto' => $producto['Nombre'] ?? '',
+                'Concepto' => '- Salida por venta ' . $venta['Documento'] ?? '',
+                'Cantidad' => $producto['Cantidad'], // negativo para salidas
+                'CantidadTotal' => $nuevoStock,
+                'CostoUnitarioCompra' => 0,
+                'CostoUnitarioPromedio' => $costoPromedio,
+                'CodigoAlmacen' => $codigoAlmacen,
+                'LlaveDocumentoVentas' => $llaveVenta,
+                'LlaveDocumentoCompras' => null,
+                'IdUsuario' => $venta['IdUsuario'] ?? 1,
+                'NumeroCaja' => $venta['CajaNumero'] ?? 0,
+                'Creado' => now(),
+            ]);
+        });
+    }
+
+
+    // public function procesarNotaCredito(array $notaCredito, array $producto)
+    // {
+    //     DB::transaction(function () use ($notaCredito, $producto) {
+
+    //         // 1. Extraer TrackID de las observaciones
+    //         $observaciones = $notaCredito['Observaciones'] ?? '';
+    //         preg_match('/TrackID:\s*(\d+)/', $observaciones, $matches);
+    //         if (empty($matches[1])) {
+    //             throw new \Exception("No se encontró TrackID en observaciones");
+    //         }
+    //         $trackId = $matches[1];
+
+    //         // 2. Obtener detalles de la venta original
+    //         $detalles = DB::table('DocumentosVentasProductos')
+    //             ->where('LlaveDocumentosVentas', $trackId)
+    //             ->where('Codigo', $producto['Codigo'])
+    //             ->first();
+
+    //         if ($detalles->isEmpty()) {
+    //             throw new \Exception("La venta con TrackID {$trackId} no tiene productos registrados");
+    //         }
+
+    //         // 3. Registrar devolución producto por producto
+    //         foreach ($detalles as $detalle) {
+    //             $producto = [
+    //                 'CodigoProducto' => $detalle->CodigoProducto,
+    //                 'NombreProducto' => $detalle->NombreProducto,
+    //                 'Cantidad' => $detalle->Cantidad,
+    //                 'CostoBase' => $detalle->CostoBase,
+    //                 'LlaveDocumentoVentas' => $trackId,
+    //             ];
+
+    //             $this->registrarDevolucion($notaCredito, $producto);
+    //         }
+    //     });
+    // }
+
+
+
+    public function procesarNotaCredito(array $notaCredito)
+{
+    DB::transaction(function () use ($notaCredito) {
+
+        // 1. Extraer TrackID de las observaciones
+        $observaciones = $notaCredito['Observaciones'] ?? '';
+        preg_match('/TrackID:\s*(\d+)/', $observaciones, $matches);
+        if (empty($matches[1])) {
+            throw new \Exception("No se encontró TrackID en observaciones");
+        }
+        $trackId = $matches[1];
+
+        // 2. Buscar venta original
+        $venta = DB::table('Ventas')->where('TrackID', $trackId)->first();
+        if (!$venta) {
+            throw new \Exception("No se encontró la venta con TrackID {$trackId}");
+        }
+
+        // 3. Recorrer productos enviados en la nota crédito
+        if (empty($notaCredito['Productos'])) {
+            throw new \Exception("La nota crédito no tiene productos");
+        }
+
+        foreach ($notaCredito['Productos'] as $prodNC) {
+            // Buscar el producto original en la factura
+            $detalleOriginal = DB::table('VentasDetalle')
+                ->where('LlaveDocumentosVentas', $trackId)
+                ->where('Codigo', $prodNC->Codigo)
+                ->first();
+           
+
+            // Armar el objeto producto para la devolución
+            $producto = [
+                'Codigo' => $prodNC->Codigo,
+                'Nombre' => $prodNC->NombreProducto,
+                'Cantidad' => $prodNC['Cantidad'], // 👈 cantidad de la NC, no de la factura completa
+                'PrecioBase' => $detalleOriginal->PrecioUnitario,
+                'LlaveDocumentoVentas' => $venta->Llave,
+            ];
+
+            // Registrar devolución (esto suma al inventario y deja el movimiento en Kardex)
+            $this->registrarDevolucion($notaCredito, $producto);
+        }
+    });
+}
+
+
+    function registrarDevolucion(array $notaCredito, array $producto)
+    {
+        DB::transaction(function () use ($notaCredito, $producto) {
+            
+            $fechaDocumento = $notaCredito['FechaDocumento'] ?? now()->toDateString();
+            $codigoAlmacen = $notaCredito['CodigoAlmacen'] ?? null;
+
+            // 1. Leer stock actual con UPDLOCK
+            $row = DB::table('InventarioAlmacen')
+                ->where('CodigoProducto', $producto['CodigoProducto'])
+                ->lockForUpdate()
+                ->first();
+
+            $stockAnterior = $row?->CantidadActual ?? 0;
+            $costoAnterior = $row?->CostoUnitarioPromedio ?? 0;
+
+            // 2. Datos de la devolución (de la factura original)
+            $cantidadDevuelta = $producto['Cantidad'];
+            $costoBase = $producto['CostoBase'] ?? 0;
+
+            // 3. Calcular costo promedio (nuevo ingreso al inventario)
+            $totalAnterior = $stockAnterior * $costoAnterior;
+            $totalNuevo = $cantidadDevuelta * $costoBase;
+
+            $nuevoStock = $stockAnterior + $cantidadDevuelta;
+            $nuevoCostoPromedio = $nuevoStock > 0
+                ? ($totalAnterior + $totalNuevo) / $nuevoStock
+                : $costoAnterior;
+
+            // 4. Actualizar Inventario
+            DB::table('InventarioAlmacen')
+                ->where('CodigoProducto', $producto['CodigoProducto'])
+                ->update([
+                    'CantidadActual' => $nuevoStock,
+                    'CostoUnitarioPromedioAnterior' => $costoAnterior,
+                    'CostoUnitarioPromedio' => $nuevoCostoPromedio,
+                ]);
+
+            // 5. Insertar en KardexMovimientos
+            DB::table('KardexMovimientos')->insert([
+                'Id_lst_InventarioTransacciones' => 2, // entrada por devolución de venta
+                'Documento' => $notaCredito['Documento'] ?? null,
+                'FechaDocumento' => $fechaDocumento,
+                'CodigoProducto' => $producto['CodigoProducto'],
+                'NombreProducto' => $producto['NombreProducto'] ?? '',
+                'Concepto' => '+ Devolución por nota crédito ' . ($notaCredito['Documento'] ?? ''),
+                'Cantidad' => $cantidadDevuelta, // positivo porque entra
+                'CantidadTotal' => $nuevoStock,
+                'CostoUnitarioCompra' => $costoBase, // lo que costó originalmente
+                'CostoUnitarioPromedio' => $nuevoCostoPromedio,
+                'CodigoAlmacen' => $codigoAlmacen,
+                'LlaveDocumentoVentas' => $producto['LlaveDocumentoVentas'] ?? null,
+                'LlaveDocumentoCompras' => null,
+                'IdUsuario' => $notaCredito['IdUsuario'] ?? 1,
+                'NumeroCaja' => $notaCredito['CajaNumero'] ?? 0,
+                'Creado' => now(),
+            ]);
+        });
+    }
 }
