@@ -206,7 +206,7 @@ class SyncVentasController extends Controller
     function registrarSalida(array $venta, array $producto)
     {
         DB::transaction(function () use ($venta, $producto) {
-            dd($venta);
+            //dd($venta);
             $llaveVenta = $venta['llave'] ?? null;
             $fechaDocumento = $venta['FechaDocumento'] ?? now()->toDateString();
             $codigoAlmacen = $venta['CodigoAlmacen'] ?? null;
