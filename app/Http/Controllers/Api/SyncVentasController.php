@@ -218,8 +218,8 @@ class SyncVentasController extends Controller
                 ->first();
 
             $stockAnterior = $row?->CantidadActual ?? 0;
-            $costoPromedio = $row?->CostoUnitarioPromedio ?? 0;
-
+            //$costoPromedio = $row?->CostoUnitarioPromedio ?? 0;
+            $costoPromedio = $this->costoBaseParaProducto($producto['Codigo'], $fechaDocumento);//mientras se migra, luago se deja el anterior
             // 2. Validar stock
             //if ($stockAnterior < $producto['Cantidad']) {
             //  throw new \Exception("Stock insuficiente para el producto {$producto['Codigo']}");
