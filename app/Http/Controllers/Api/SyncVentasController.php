@@ -308,7 +308,7 @@ class SyncVentasController extends Controller
         $trackId = $matches[1];
 
         // 2. Buscar venta original
-        $venta = DB::table('Ventas')->where('TrackID', $trackId)->first();
+        $venta = DB::table('DocumentosVentas')->where('llave', $trackId)->first();
         if (!$venta) {
             throw new \Exception("No se encontró la venta con TrackID {$trackId}");
         }
@@ -320,7 +320,7 @@ class SyncVentasController extends Controller
 
         foreach ($notaCredito['Productos'] as $prodNC) {
             // Buscar el producto original en la factura
-            $detalleOriginal = DB::table('VentasDetalle')
+            $detalleOriginal = DB::table('DocumentosVentasProductos')
                 ->where('LlaveDocumentosVentas', $trackId)
                 ->where('Codigo', $prodNC->Codigo)
                 ->first();
