@@ -300,7 +300,7 @@ class SyncVentasController extends Controller
     DB::transaction(function () use ($notaCredito) {
 
         // 1. Extraer TrackID de las observaciones
-        $observaciones = $notaCredito['Observaciones'] ?? '';
+        $observaciones = $notaCredito['Observacion'] ?? '';
         preg_match('/TrackID:\s*(\d+)/', $observaciones, $matches);
         if (empty($matches[1])) {
             throw new \Exception("No se encontró TrackID en observaciones");
