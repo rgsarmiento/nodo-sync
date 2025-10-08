@@ -139,12 +139,12 @@ class SyncVentasController extends Controller
                 DB::rollBack();
                 // devuelve error detallado para diagnóstico (puedes sanitizar en producción)
                 return response()->json([
-                     'status' => 'error',
-                     'message' => $e->getMessage(),
-                     'file'    => $e->getFile(),
-                     'line'    => $e->getLine(),
-                     'llave'   => $venta['llave'] ?? null,
-                     'trace' => $e->getTraceAsString(), // descomenta si quieres TODO el stack
+                    'status' => 'error',
+                    'message' => $e->getMessage(),
+                    'file'    => $e->getFile(),
+                    'line'    => $e->getLine(),
+                    'llave'   => $venta['llave'] ?? null,
+                    'trace' => $e->getTraceAsString(), // descomenta si quieres TODO el stack
                 ], 500);
             }
         }
@@ -219,7 +219,7 @@ class SyncVentasController extends Controller
 
             $stockAnterior = $row?->CantidadActual ?? 0;
             //$costoPromedio = $row?->CostoUnitarioPromedio ?? 0;
-            $costoPromedio = $this->costoBaseParaProducto($producto['Codigo'], $fechaDocumento);//mientras se migra, luago se deja el anterior
+            $costoPromedio = $this->costoBaseParaProducto($producto['Codigo'], $fechaDocumento); //mientras se migra, luago se deja el anterior
             // 2. Validar stock
             //if ($stockAnterior < $producto['Cantidad']) {
             //  throw new \Exception("Stock insuficiente para el producto {$producto['Codigo']}");
@@ -296,56 +296,54 @@ class SyncVentasController extends Controller
 
 
     public function procesarNotaCredito(array $notaCredito)
-{
-    DB::transaction(function () use ($notaCredito) {
+    {
+        DB::transaction(function () use ($notaCredito) {
 
-        // 1. Extraer TrackID de las observaciones
-        $observaciones = $notaCredito['Observacion'] ?? '';
-        preg_match('/TrackID:\s*(\d+)/', $observaciones, $matches);
-        if (empty($matches[1])) {
-            throw new \Exception("No se encontró TrackID en observaciones");
-        }
-        $trackId = $matches[1];
+            // 1. Extraer TrackID de las observaciones
+            $observaciones = $notaCredito['Observacion'] ?? '';
+            preg_match('/TrackID:\s*(\d+)/', $observaciones, $matches);
+            if (empty($matches[1])) {
+                throw new \Exception("No se encontró TrackID en observaciones");
+            }
+            $trackId = $matches[1];
 
-        // 2. Buscar venta original
-        $venta = DB::table('DocumentosVentas')->where('llave', $trackId)->first();
-        if (!$venta) {
-            throw new \Exception("No se encontró la venta con TrackID {$trackId}");
-        }
+            // 2. Buscar venta original
+            $venta = DB::table('DocumentosVentas')->where('llave', $trackId)->first();
+            if (!$venta) {
+                throw new \Exception("No se encontró la venta con TrackID {$trackId}");
+            }
 
-        // 3. Recorrer productos enviados en la nota crédito
-        if (empty($notaCredito['Productos'])) {
-            throw new \Exception("La nota crédito no tiene productos");
-        }
+            // 3. Recorrer productos enviados en la nota crédito
+            if (empty($notaCredito['Productos'])) {
+                throw new \Exception("La nota crédito no tiene productos");
+            }
 
-        foreach ($notaCredito['Productos'] as $prodNC) {
-            // Buscar el producto original en la factura
-            $detalleOriginal = DB::table('DocumentosVentasProductos')
-                ->where('LlaveDocumentosVentas', $trackId)
-                ->where('Codigo', $prodNC->Codigo)
-                ->first();
-           
+            foreach ($notaCredito['Productos'] as $prodNC) {
+                // Buscar el producto original en la factura
+                $detalleOriginal = DB::table('DocumentosVentasProductos')
+                    ->where('LlaveDocumentosVentas', $trackId)
+                    ->where('Codigo', $prodNC['Codigo'])
+                    ->first();
 
-            // Armar el objeto producto para la devolución
-            $producto = [
-                'Codigo' => $prodNC->Codigo,
-                'Nombre' => $prodNC->NombreProducto,
-                'Cantidad' => $prodNC['Cantidad'], // 👈 cantidad de la NC, no de la factura completa
-                'PrecioBase' => $detalleOriginal->PrecioUnitario,
-                'LlaveDocumentoVentas' => $venta->Llave,
-            ];
+                // Armar el objeto producto para la devolución
+                $producto = [
+                    'Codigo' => $prodNC['Codigo'],
+                    'Nombre' => $prodNC['NombreProducto'],
+                    'Cantidad' => $prodNC['Cantidad'], // cantidad de la NC
+                    'PrecioBase' => $detalleOriginal->PrecioUnitario ?? 0,
+                    'LlaveDocumentoVentas' => $venta->Llave,
+                ];
 
-            // Registrar devolución (esto suma al inventario y deja el movimiento en Kardex)
-            $this->registrarDevolucion($notaCredito, $producto);
-        }
-    });
-}
+                $this->registrarDevolucion($notaCredito, $producto);
+            }
+        });
+    }
 
 
     function registrarDevolucion(array $notaCredito, array $producto)
     {
         DB::transaction(function () use ($notaCredito, $producto) {
-            
+
             $fechaDocumento = $notaCredito['FechaDocumento'] ?? now()->toDateString();
             $codigoAlmacen = $notaCredito['CodigoAlmacen'] ?? null;
 
