@@ -328,7 +328,7 @@ class SyncVentasController extends Controller
                 // Armar el objeto producto para la devolución
                 $producto = [
                     'Codigo' => $prodNC['Codigo'],
-                    'Nombre' => $prodNC['NombreProducto'],
+                    'Nombre' => $prodNC['Nombre'],
                     'Cantidad' => $prodNC['Cantidad'], // cantidad de la NC
                     'PrecioBase' => $detalleOriginal->PrecioUnitario ?? 0,
                     'LlaveDocumentoVentas' => $venta->Llave,
