@@ -331,7 +331,7 @@ class SyncVentasController extends Controller
                     'Nombre' => $prodNC['Nombre'],
                     'Cantidad' => $prodNC['Cantidad'], // cantidad de la NC
                     'PrecioBase' => $detalleOriginal->PrecioUnitario ?? 0,
-                    'LlaveDocumentoVentas' => $venta->Llave,
+                    'LlaveDocumentoVentas' => $notaCredito['llave'] ?? null,
                 ];
 
                 $this->registrarDevolucion($notaCredito, $producto);
