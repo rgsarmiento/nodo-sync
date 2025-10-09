@@ -330,7 +330,7 @@ class SyncVentasController extends Controller
                     'Codigo' => $prodNC['Codigo'],
                     'Nombre' => $prodNC['Nombre'],
                     'Cantidad' => $prodNC['Cantidad'], // cantidad de la NC
-                    'PrecioBase' => $detalleOriginal->PrecioUnitario ?? 0,
+                    'CostoBase' => $detalleOriginal->CostoBase ?? 0,
                     'LlaveDocumentoVentas' => $notaCredito['llave'] ?? null,
                 ];
 
