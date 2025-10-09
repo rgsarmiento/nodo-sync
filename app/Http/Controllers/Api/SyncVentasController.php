@@ -349,7 +349,7 @@ class SyncVentasController extends Controller
 
             // 1. Leer stock actual con UPDLOCK
             $row = DB::table('InventarioAlmacen')
-                ->where('CodigoProducto', $producto['CodigoProducto'])
+                ->where('CodigoProducto', $producto['Codigo'])
                 ->lockForUpdate()
                 ->first();
 
@@ -371,7 +371,7 @@ class SyncVentasController extends Controller
 
             // 4. Actualizar Inventario
             DB::table('InventarioAlmacen')
-                ->where('CodigoProducto', $producto['CodigoProducto'])
+                ->where('CodigoProducto', $producto['Codigo'])
                 ->update([
                     'CantidadActual' => $nuevoStock,
                     'CostoUnitarioPromedioAnterior' => $costoAnterior,
@@ -383,8 +383,8 @@ class SyncVentasController extends Controller
                 'Id_lst_InventarioTransacciones' => 2, // entrada por devolución de venta
                 'Documento' => $notaCredito['Prefijo'] . '-' . $notaCredito['Consecutivo'] ?? null,
                 'FechaDocumento' => $fechaDocumento,
-                'CodigoProducto' => $producto['CodigoProducto'],
-                'NombreProducto' => $producto['NombreProducto'] ?? '',
+                'CodigoProducto' => $producto['Codigo'],
+                'NombreProducto' => $producto['Nombre'] ?? '',
                 'Concepto' => '+ Devolución por nota crédito ' . $notaCredito['Prefijo'] . '-' . $notaCredito['Consecutivo'] ?? '',
                 'Cantidad' => $cantidadDevuelta, // positivo porque entra
                 'CantidadTotal' => $nuevoStock,
