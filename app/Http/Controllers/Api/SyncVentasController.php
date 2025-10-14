@@ -256,36 +256,67 @@ class SyncVentasController extends Controller
     }
 
 
-    // public function procesarNotaCredito(array $notaCredito, array $producto)
-    // {
-    //     DB::transaction(function () use ($notaCredito, $producto) {
 
+    // public function procesarNotaCredito(array $notaCredito)
+    // {
+    //     DB::transaction(function () use ($notaCredito) {
+
+    //         $notaCreditoConReferencia = true;
     //         // 1. Extraer TrackID de las observaciones
-    //         $observaciones = $notaCredito['Observaciones'] ?? '';
+    //         $observaciones = $notaCredito['Observacion'] ?? '';
     //         preg_match('/TrackID:\s*(\d+)/', $observaciones, $matches);
     //         if (empty($matches[1])) {
-    //             throw new \Exception("No se encontró TrackID en observaciones");
+    //             //throw new \Exception("No se encontró TrackID en observaciones");
+    //             $notaCreditoConReferencia = false;
     //         }
-    //         $trackId = $matches[1];
+    //         if ($notaCreditoConReferencia) {
+    //             // Si no tiene TrackID, no se puede procesar la devolución
+    //             $trackId = $matches[1];
 
-    //         // 2. Obtener detalles de la venta original
-    //         $detalles = DB::table('DocumentosVentasProductos')
-    //             ->where('LlaveDocumentosVentas', $trackId)
-    //             ->where('Codigo', $producto['Codigo'])
-    //             ->first();
-
-    //         if ($detalles->isEmpty()) {
-    //             throw new \Exception("La venta con TrackID {$trackId} no tiene productos registrados");
+    //             // 2. Buscar venta original
+    //             $venta = DB::table('DocumentosVentas')->where('llave', $trackId)->first();
+    //             if (!$venta) {
+    //                 throw new \Exception("No se encontró la venta con TrackID {$trackId}");
+    //             }
     //         }
 
-    //         // 3. Registrar devolución producto por producto
-    //         foreach ($detalles as $detalle) {
+    //         // 3. Recorrer productos enviados en la nota crédito
+    //         if (empty($notaCredito['Productos'])) {
+    //             throw new \Exception("La nota crédito no tiene productos");
+    //         }
+
+    //         foreach ($notaCredito['Productos'] as $prodNC) {
+    //             // Buscar el producto original en la factura
+    //             $detalleOriginal = DB::table('DocumentosVentasProductos')
+    //                 ->where('LlaveDocumentosVentas', $trackId)
+    //                 ->where('Codigo', $prodNC['Codigo'])
+    //                 ->first();
+
+    //             if (!$detalleOriginal) {
+    //                 if ($notaCreditoConReferencia) {
+    //                     throw new \Exception("No se encontró el producto {$prodNC['Codigo']} en la venta con TrackID {$trackId}");
+    //                 } else {
+
+    //                     $row = DB::table('InventarioAlmacen')
+    //                         ->where('CodigoProducto', $prodNC['Codigo'])
+    //                         ->lockForUpdate()
+    //                         ->first();
+
+    //                     $costoPromedio = $row?->CostoUnitarioPromedio ?? 0;
+
+    //                     // Si no tiene referencia, asignar costo 0
+    //                     $detalleOriginal = (object)[
+    //                         'CostoBase' => $costoPromedio
+    //                     ];
+    //                 }
+    //             }
+    //             // Armar el objeto producto para la devolución
     //             $producto = [
-    //                 'CodigoProducto' => $detalle->CodigoProducto,
-    //                 'NombreProducto' => $detalle->NombreProducto,
-    //                 'Cantidad' => $detalle->Cantidad,
-    //                 'CostoBase' => $detalle->CostoBase,
-    //                 'LlaveDocumentoVentas' => $trackId,
+    //                 'Codigo' => $prodNC['Codigo'],
+    //                 'Nombre' => $prodNC['Nombre'],
+    //                 'Cantidad' => $prodNC['Cantidad'], // cantidad de la NC
+    //                 'CostoBase' => $detalleOriginal->CostoBase ?? 0,
+    //                 'LlaveDocumentoVentas' => $notaCredito['llave'] ?? null,
     //             ];
 
     //             $this->registrarDevolucion($notaCredito, $producto);
@@ -294,50 +325,88 @@ class SyncVentasController extends Controller
     // }
 
 
-
     public function procesarNotaCredito(array $notaCredito)
     {
         DB::transaction(function () use ($notaCredito) {
 
-            // 1. Extraer TrackID de las observaciones
+            // 1️⃣ Extraer TrackID de las observaciones
             $observaciones = $notaCredito['Observacion'] ?? '';
             preg_match('/TrackID:\s*(\d+)/', $observaciones, $matches);
             if (empty($matches[1])) {
                 throw new \Exception("No se encontró TrackID en observaciones");
             }
+
             $trackId = $matches[1];
 
-            // 2. Buscar venta original
-            $venta = DB::table('DocumentosVentas')->where('llave', $trackId)->first();
-            if (!$venta) {
-                throw new \Exception("No se encontró la venta con TrackID {$trackId}");
-            }
+            // 2️⃣ Intentar encontrar la venta original
+            $venta = DB::table('DocumentosVentas')
+                ->where('llave', $trackId)
+                ->first();
 
-            // 3. Recorrer productos enviados en la nota crédito
+            // 3️⃣ Validar que tenga productos
             if (empty($notaCredito['Productos'])) {
                 throw new \Exception("La nota crédito no tiene productos");
             }
 
+            // 4️⃣ Recorrer productos
             foreach ($notaCredito['Productos'] as $prodNC) {
-                // Buscar el producto original en la factura
-                $detalleOriginal = DB::table('DocumentosVentasProductos')
-                    ->where('LlaveDocumentosVentas', $trackId)
-                    ->where('Codigo', $prodNC['Codigo'])
-                    ->first();
+                $codigo = $prodNC['Codigo'] ?? null;
+                if (!$codigo) continue;
 
-                // Armar el objeto producto para la devolución
+                $detalleOriginal = null;
+                $costoBase = 0;
+
+                // Si se encontró la venta, buscar el detalle original
+                if ($venta) {
+                    $detalleOriginal = DB::table('DocumentosVentasProductos')
+                        ->where('LlaveDocumentosVentas', $trackId)
+                        ->where('Codigo', $codigo)
+                        ->lockForUpdate()
+                        ->first();
+
+                    // Si no está en el detalle, se podría usar el costo promedio
+                    if ($detalleOriginal) {
+                        $costoBase = $detalleOriginal->CostoBase ?? 0;
+                    } else {
+                        $row = DB::table('InventarioAlmacen')
+                            ->where('CodigoProducto', $codigo)
+                            ->lockForUpdate()
+                            ->first();
+                        $costoBase = $row?->CostoUnitarioPromedio ?? 0;
+                    }
+                }
+                // Si no existe venta con ese TrackID
+                else {
+                    $row = DB::table('InventarioAlmacen')
+                        ->where('CodigoProducto', $codigo)
+                        ->lockForUpdate()
+                        ->first();
+                    $costoBase = $row?->CostoUnitarioPromedio ?? 0;
+                }
+
+                // 5️⃣ Armar el producto
                 $producto = [
-                    'Codigo' => $prodNC['Codigo'],
-                    'Nombre' => $prodNC['Nombre'],
-                    'Cantidad' => $prodNC['Cantidad'], // cantidad de la NC
-                    'CostoBase' => $detalleOriginal->CostoBase ?? 0,
-                    'LlaveDocumentoVentas' => $notaCredito['llave'] ?? null,
+                    'Codigo' => $codigo,
+                    'Nombre' => $prodNC['Nombre'] ?? $prodNC['NombreProducto'] ?? '',
+                    'Cantidad' => $prodNC['Cantidad'] ?? 0,
+                    'CostoBase' => $costoBase,
+                    'LlaveDocumentoVentas' => $venta->Llave ?? $notaCredito['llave'] ?? null,
                 ];
 
+                // 6️⃣ Registrar devolución
                 $this->registrarDevolucion($notaCredito, $producto);
             }
         });
     }
+
+
+
+
+
+
+
+
+
 
 
     function registrarDevolucion(array $notaCredito, array $producto)
