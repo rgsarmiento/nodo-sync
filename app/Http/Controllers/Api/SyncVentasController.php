@@ -67,7 +67,8 @@ class SyncVentasController extends Controller
                     $where = [
                         'LlaveDocumentosVentas' => $llave,
                         'Codigo' => $prod['Codigo'],
-                        'Orden' => $prod['Orden'] ?? 0
+                        'Orden' => $prod['Orden'] ?? 0,
+                        'Creado' => $pago['Creado'] ?? null
                     ];
 
                     // calcular costo
@@ -97,7 +98,8 @@ class SyncVentasController extends Controller
                         $impWhere = [
                             'LlaveDocumentosVentas' => $llave,
                             'IdImpuesto' => $imp['IdImpuesto'] ?? 0,
-                            'CodigoDian' => $imp['CodigoDian'] ?? 0
+                            'CodigoDian' => $imp['CodigoDian'] ?? 0,
+                            'Creado' => $pago['Creado'] ?? null
                         ];
                         $impData = $imp;
                         $impData['LlaveDocumentosVentas'] = $llave;
@@ -111,7 +113,9 @@ class SyncVentasController extends Controller
                         $pagoWhere = [
                             'LlaveDocumentosVentas' => $llave,
                             'CodigoDian' => $pago['CodigoDian'] ?? 0,
-                            'Nombre' => $pago['Nombre'] ?? ''
+                            'Nombre' => $pago['Nombre'] ?? '',
+                            'Valor' => $pago['Valor'] ?? 0,      
+                            'Creado' => $pago['Creado'] ?? null   
                         ];
                         $pagoData = $pago;
                         $pagoData['LlaveDocumentosVentas'] = $llave;
@@ -398,14 +402,6 @@ class SyncVentasController extends Controller
             }
         });
     }
-
-
-
-
-
-
-
-
 
 
 
