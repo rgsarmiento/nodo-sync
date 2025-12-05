@@ -27,12 +27,16 @@ class SyncVentasController extends Controller
                     throw new \Exception('Llave faltante en una venta.');
                 }
 
-                // Verificar si la venta ya existe
-                $existe = DB::table('DocumentosVentas')->where('Llave', $llave)->exists();
+                // Verificar si la venta ya existe (con lock para evitar race conditions)
+                $existe = DB::table('DocumentosVentas')
+                    ->where('Llave', $llave)
+                    ->lockForUpdate()
+                    ->exists();
+                    
                 if ($existe) {
                     // Si ya existe, marcar como procesada y continuar
                     $procesadas[] = $llave;
-                    DB::commit(); // aunque no insertamos, cerramos la transacción
+                    DB::commit();
                     continue;
                 }
 
@@ -68,7 +72,7 @@ class SyncVentasController extends Controller
                         'LlaveDocumentosVentas' => $llave,
                         'Codigo' => $prod['Codigo'],
                         'Orden' => $prod['Orden'] ?? 0,
-                        'Creado' => $pago['Creado'] ?? null
+                        'Creado' => $prod['Creado'] ?? null
                     ];
 
                     // calcular costo
@@ -99,7 +103,7 @@ class SyncVentasController extends Controller
                             'LlaveDocumentosVentas' => $llave,
                             'IdImpuesto' => $imp['IdImpuesto'] ?? 0,
                             'CodigoDian' => $imp['CodigoDian'] ?? 0,
-                            'Creado' => $pago['Creado'] ?? null
+                            'Creado' => $imp['Creado'] ?? null
                         ];
                         $impData = $imp;
                         $impData['LlaveDocumentosVentas'] = $llave;
