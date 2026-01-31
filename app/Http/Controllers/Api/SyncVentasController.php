@@ -67,11 +67,19 @@ class SyncVentasController extends Controller
                 $codigoAlmacen = $venta['CodigoAlmacen'] ?? $encabezado['CodigoAlmacen'] ?? null;
 
                 // Productos
-                foreach ($venta['Productos'] as $prod) {
+                foreach ($venta['Productos'] as $index => $prod) {
+                    // El Orden debe ser la posición física en el documento (1, 2, 3...)
+                    // Esto evita que códigos de productos (como 1596) se filtren en la columna Orden
+                    $ordenItem = (int)($index + 1);
+
+                    // Extraer código de forma segura (independiente de mayúsculas/minúsculas)
+                    $codigoItem = $prod['Codigo'] ?? $prod['codigo'] ?? '';
+
+                    // La llave del producto en la BD es estrictamente la factura + su número de línea
                     $where = [
                         'LlaveDocumentosVentas' => $llave,
                         'Codigo' => $prod['Codigo'],
-                        'Orden' => $prod['Orden'] ?? 0,
+                        'Orden' => $ordenItem,
                         'Creado' => $prod['Creado'] ?? null
                     ];
 
@@ -80,6 +88,8 @@ class SyncVentasController extends Controller
 
                     // preparar datos para inserción / actualización
                     $prodData = $prod;
+                    $prodData['Orden'] = $ordenItem;
+                    $prodData['Codigo'] = $codigoItem;
                     $prodData['CostoBase'] = $costo;
                     $prodData['LlaveDocumentosVentas'] = $llave;
                     $prodData['NombreImpuestoSaludable'] = $prodData['NombreImpuestoSaludable'] ?? ''; // evitar null
